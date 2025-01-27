@@ -1,0 +1,162 @@
+pipeline {
+  agent any
+
+  environment {
+    GREEN_VM = 'green'
+    ANSIBLE_INVENTORY = 'ansible/inventory/inventory_jenkins.ini'
+    ANSIBLE_PLAYBOOK_DEPLOY = 'ansible/playbooks/deploy.yml'
+    ANSIBLE_PLAYBOOK_ROLLBACK = 'ansible/playbooks/rollback.yml'
+  }
+
+  stages {
+
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Assemble') {
+      steps {
+        dir('CA2/tutRestGradle/nonrest') {
+          sh 'rm -rf src/main/resources/application.properties'
+          sh 'chmod +x ../gradlew'
+          sh '../gradlew build'
+        }
+      }
+    }
+
+    stage('Test') {
+      steps {
+        dir('CA2/tutRestGradle/nonrest') {
+          sh '../gradlew test'
+        }
+      }
+
+      post {
+        always {
+          dir('CA2/tutRestGradle/nonrest') {
+            junit 'build/test-results/test/*.xml'
+          }
+        }
+
+        success { 
+          script { 
+            def commitId = sh(script: 'git rev-parse HEAD', returnStdout: true).trim() 
+            def version = sh(script: 'git tag --list | grep "stable-v" | sed "s/stable-v//" | sort -V | tail -n1', returnStdout: true).trim() 
+            def nextVersion = version ? version.toInteger() + 1 : 1 
+            def tagName = "stable-v${nextVersion}" 
+            sh "git tag -a ${tagName} -m 'Build ${env.BUILD_ID} - ${commitId}'"
+            sh "git push origin ${tagName}"
+          }
+        }
+        
+      }
+
+    }
+
+    stage('Archive') {
+      steps {
+        dir('CA2/tutRestGradle/nonrest'){
+          archiveArtifacts artifacts: 'build/libs/*.jar', fingerprint: true
+        }
+      }
+    }
+
+    stage('Deploy to Production?') {
+      steps {
+        input message: 'Deploy to production?', ok: 'Deploy'
+      }
+    }
+
+    stage('Deploy to Production (Green)') {
+      steps {
+        dir('CA6/Part1') {
+          ansiblePlaybook credentialsId: 'ansible', disableHostKeyChecking: true, installation: 'Ansible', playbook: "${ANSIBLE_PLAYBOOK_DEPLOY}", inventory: "${ANSIBLE_INVENTORY}", extraVars: [target: GREEN_VM, workspace: env.WORKSPACE]
+        }
+      }
+    }
+
+    stage('Rollback') {
+
+      steps {
+        script {
+          
+          def performRollback = input(
+                message: 'Rollback to a stable version?',
+                ok: 'Proceed',
+                parameters: [
+                    booleanParam(
+                        defaultValue: false,
+                        description: 'Check to perform rollback',
+                        name: 'ROLLBACK'
+                    )
+                  ]
+          )
+
+          if (performRollback) {
+
+            withCredentials([usernamePassword(credentialsId: 'jenkins-api-credentials', usernameVariable: 'JENKINS_USER', passwordVariable: 'JENKINS_API_TOKEN')]) {
+              dir('CA6/Part1') {
+                ansiblePlaybook credentialsId: 'ansible', 
+                                disableHostKeyChecking: true, 
+                                installation: 'Ansible', 
+                                playbook: "${ANSIBLE_PLAYBOOK_ROLLBACK}", 
+                                inventory: "${ANSIBLE_INVENTORY}",
+                                extraVars: [
+                                  jenkins_url: "${env.JENKINS_URL}",
+                                  jenkins_user: "${env.JENKINS_USER}",
+                                  jenkins_api_token: "${env.JENKINS_API_TOKEN}",
+                                  jenkins_job: "ca6-part1"
+                                ]
+              }
+            }
+          }
+          else {
+            echo "Rollback was cancelled"
+          }
+
+        }
+      }
+
+
+    }
+    
+
+  }
+
+  post {
+
+    always {
+      echo "Pipeline execution completed with status: ${currentBuild.result}"
+    }
+        
+    success {
+      script {
+        def retries = 5
+        def waitTime = 10
+
+        for (int i = 0; i < retries; i++) {
+          def status = sh(script: 'curl -s -o /dev/null -w "%{http_code}" http://192.168.56.11:8080/employees || echo "000"', returnStdout: true).trim()
+        
+          if (status == "200") {
+            echo "The app is functioning correctly! Status: ${status}"
+            break
+          } else {
+            echo "The app is not started yet. Status: ${status}. Try number ${i + 1} of ${retries}"
+            
+            if (i == retries - 1) {
+              error("The verification of the deployment failed after ${retries} tries.")
+            }
+          
+          sleep(waitTime)
+        }
+      }
+
+
+   
+    }
+  }
+ }
+
+}

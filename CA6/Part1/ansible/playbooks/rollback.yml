@@ -1,0 +1,45 @@
+---
+- name: Rollback nonRest APP
+  hosts: green
+  become: yes
+  vars:
+    artifact_name: "nonrest.jar"
+    health_url: "http://127.0.0.1:8080/employees"
+  
+  tasks:
+    - name: Stop current NonRest Service
+      service:
+        name: nonrest
+        state: stopped
+
+    - name: Get the artifact from jenkins
+      get_url:
+        url: "http://172.19.240.120:8080/job/{{ jenkins_job }}/lastSuccessfulBuild/artifact/build/libs/{{ artifact_name }}"
+        dest: "{{ artifact_name }}"
+        url_username: "{{ jenkins_user }}"
+        url_password: "{{ jenkins_api_token }}"
+        force_basic_auth: yes
+
+    - name: Start the service
+      service:
+        name: nonrest 
+        state: started
+
+    - name: Check if nonrest app is working properly
+      uri:
+        url: "{{ health_url }}"
+        method: GET
+        status_code: 200 
+      register: health_check
+      until: health_check.status == 200
+      retries: 6
+      delay: 10
+
+    - name: Force failure if healthchecks fail 
+      fail:
+        msg: "Healthcheck failed after rollback."
+      when: health_check.status != 200
+
+    - name: Check success of the rollback
+      debug:
+        msg: "Rollback carried out successfully and the application is working!"

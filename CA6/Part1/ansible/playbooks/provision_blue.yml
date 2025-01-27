@@ -1,0 +1,68 @@
+---
+- hosts: "blue"
+  become: yes
+  tasks:
+    - import_tasks: install_and_configure_machine.yml
+
+    - name: Adicionar GitHub aos hosts conhecidos
+      known_hosts:
+        path: /home/vagrant/.ssh/known_hosts
+        name: github.com
+        key: "{{ lookup('pipe', 'ssh-keyscan github.com') }}"
+      become_user: vagrant
+
+    - name: Criar o diretório de destino (se necessário)
+      file:
+        path: /cogsi_project
+        state: directory
+        owner: vagrant  
+        group: vagrant  
+        mode: '0770'
+        recurse: true   
+
+    - name: Garantir que a verificação de permissões de arquivos está desativada no Git
+      git_config:
+        name: core.fileMode
+        value: false
+        scope: global 
+      become_user: vagrant
+
+    - name: Clonar o repositório do serviço REST
+      git:
+        repo: "git@github.com:1181210/cogsi2425-1181210-1190384-1181242.git"
+        dest: /cogsi_project
+        version: main
+        accept_hostkey: yes
+        update: yes 
+      become_user: vagrant
+
+    - name: Ajustar permissões para o diretório cogsi_project
+      file:
+        path: /cogsi_project
+        state: directory
+        mode: '0770'
+        owner: root
+        recurse: true 
+     
+    - name: Copiar o serviço para o diretório do system
+      template:
+        src: "nonrest.service"
+        dest: "/etc/systemd/system/nonrest.service"
+        mode: 0755
+      tags: install,systemd
+      become: true      
+      become_user: root  
+
+    - name: Recarregar o systemd para reconhecer o serviço
+      ansible.builtin.systemd:
+        daemon_reload: true
+      become: true       
+      become_user: root  
+
+    - name: Garantir que o serviço nonREST está ativo
+      ansible.builtin.systemd:
+        name: nonrest
+        enabled: true
+        state: started
+      become: true      
+      become_user: root

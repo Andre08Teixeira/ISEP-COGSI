@@ -1,0 +1,39 @@
+---
+- name: Deploy NonRest App
+  hosts: prod
+  become: yes
+  tasks:
+
+    - name: Ensure Docker is installed
+      apt:
+        name: docker.io
+        state: present
+
+    - name: Login to Docker Hub
+      shell: docker login -u "{{ docker_user }}" -p "{{ docker_password }}"
+      become: yes
+
+    - name: Stop and remove old container if exists
+      docker_container:
+        name: nonrest
+        state: absent
+      become: yes
+
+    - name: Pull the latest Docker image
+      docker_image:
+        name: "{{ docker_image }}"
+        source: pull
+      become: yes
+      register: docker_pull_result
+      failed_when: docker_pull_result.failed
+
+    - name: Run the new Docker container
+      docker_container:
+        name: nonrest
+        image: "{{ docker_image }}"
+        ports:
+         - "8000:8080"
+        state: started
+      become: yes
+      register: docker_run_result
+      failed_when: docker_run_result.failed

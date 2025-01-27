@@ -1,0 +1,166 @@
+pipeline {
+  agent any
+
+  environment {
+    ANSIBLE_INVENTORY = 'ansible/inventory/inventory_jenkins.ini'
+    ANSIBLE_PLAYBOOK_DEPLOY = 'ansible/playbooks/deployment.yml'
+  }
+
+  stages {
+
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Assemble') {
+      steps {
+        dir('CA2/tutRestGradle/nonrest') {
+          sh 'rm -rf src/main/resources/application.properties'
+          sh 'chmod +x ../gradlew'
+          sh '../gradlew build'
+        }
+      }
+    }
+
+    stage('Test') {
+      parallel {
+        stage('Unit Tests') {
+          agent { label 'unit-test-node' }
+          steps {
+            dir('CA2/tutRestGradle/nonrest') {
+              sh 'rm -rf src/main/resources/application.properties'
+              sh '../gradlew test'
+            }
+
+            post{
+              always {
+                dir('CA2/tutRestGradle/nonrest') {
+                  sh 'ls -l build/test-results/test'
+                  junit '**/build/test-results/test/TEST-*.xml'
+                }
+              }
+            }
+          
+          }
+        }
+      
+        stage('Integration Tests') {
+          agent { label 'integration-test-node' }
+          steps {
+            dir('CA2/tutRestGradle/nonrest') {
+              sh 'rm -rf src/main/resources/application.properties'
+              sh '''echo "server.port=9090" > src/main/resources/application.properties'''
+              sh '../gradlew integrationTest'
+            }
+          }
+
+          post{
+            always {
+              dir('CA2/tutRestGradle/nonrest') {
+                junit '**/build/test-results/integrationTest/*.xml'
+              }
+            }
+          }
+        }
+      }
+    }
+
+    stage('Tag Docker Image') {
+      steps {
+        script {
+          sh 'cp CA2/tutRestGradle/nonrest/build/libs/nonrest.jar CA6/Part2/'
+          dir('CA6/Part2') {
+            dockerImage = docker.build("david691691/nonrest:${env.BUILD_NUMBER}")
+            dockerImage.tag("latest")
+          }
+        }
+      }
+    }
+
+    stage('Archive') {
+      steps {
+        archiveArtifacts artifacts: '**/Dockerfile', fingerprint: true
+      }
+    }
+    
+    stage('Push Docker Image') {
+      steps {
+        script {
+          docker.withRegistry('https://registry.hub.docker.com', 'docker-credentials-token') {  
+            dockerImage.push()    
+            dockerImage.push('latest')
+          }
+        }
+      }
+    }
+
+    stage('Deploy') {
+      when {
+          expression { return env.GIT_BRANCH == 'origin/main' }
+      }
+            
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'docker-credentials-token', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASSWORD')]) {
+          dir('CA6/Part2') {
+            ansiblePlaybook credentialsId: 'ansible',
+              installation: 'Ansible',
+              playbook: "${ANSIBLE_PLAYBOOK_DEPLOY}",
+              inventory: "${ANSIBLE_INVENTORY}",
+              extraVars: [
+                docker_user: "${DOCKER_USER}",
+                docker_password: "${DOCKER_PASSWORD}",
+                docker_image: "david691691/nonrest:${env.BUILD_NUMBER}"
+              ]
+          } 
+        }
+      }
+    }
+  }
+
+  post {
+    success {
+
+      script {
+        def retries = 5
+        def waitTime = 10
+
+        for (int i = 0; i < retries; i++) {
+          def status = sh(script: 'curl -s -o /dev/null -w "%{http_code}" http://192.168.56.12:8000/employees || echo "000"', returnStdout: true).trim()
+        
+          if (status == "200") {
+            echo "The app is functioning correctly! Status: ${status}"
+            break
+          } else {
+            echo "The app is not started yet. Status: ${status}. Try number ${i + 1} of ${retries}"
+            
+            if (i == retries - 1) {
+              error("The verification of the deployment failed after ${retries} tries.")
+            }
+          
+            sleep(waitTime)
+          }
+        }
+      }
+
+      mail to: '1181210@isep.ipp.pt',
+      subject: "Successful Deployment",
+      body: "The application has been successfully deployed."
+    }
+    
+    failure {
+      mail to: '1181210@isep.ipp.pt',
+      subject: "Deployment Failed",
+      body: "The deployment process failed. Please check Jenkins logs."
+    }
+
+    unstable {
+      mail to: '1181210@isep.ipp.pt',
+      subject: "Deployment Unstable",
+      body: "The deployment process was unstable. Please check Jenkins logs."
+    }
+
+  }
+
+}

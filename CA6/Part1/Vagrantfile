@@ -1,0 +1,74 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+# All Vagrant configuration is done below. The "2" in Vagrant.configure
+# configures the configuration version (we support older styles for
+# backwards compatibility). Please don't change it unless you know what
+# you're doing.
+Vagrant.configure("2") do |config|
+  # The most common configuration options are documented and commented below.
+  # For a complete reference, please see the online documentation at
+  # https://docs.vagrantup.com.
+
+  # Every Vagrant development environment requires a box. You can search for
+  # boxes at https://vagrantcloud.com/search.
+  
+  config.vm.provider :virtualbox do |vb|
+   vb.memory = "4096" # Aloca 4 GB de memória para a VM 
+   vb.cpus = 2     # Aloca 2 CPUs para a VM
+  end
+
+  config.vm.boot_timeout = 600
+  
+  config.vm.box = "bento/ubuntu-22.04"
+
+  # Copy public SSH key to VM
+  config.vm.provision "file", source: "~/.ssh/id_ed25519.pub", destination: "~/.ssh/authorized_keys"
+  
+  config.ssh.forward_agent = true
+  config.ssh.insert_key = false
+  
+  # Paths to the private key
+  config.ssh.private_key_path = [
+  "~/.vagrant.d/insecure_private_key",
+  "~/.ssh/id_ed25519"
+  ]
+
+  
+  # Copy all the available SSH keys locally into the Virtual Machine
+  config.vm.provision "file", source: "~/.ssh/id_ed25519", destination: "/home/vagrant/.ssh/id_ed25519"
+  config.vm.synced_folder "./shared/", "/shared"
+
+  config.vm.hostname = "cogsiVagrant"
+
+  config.vm.define "blue" do |blue|
+    blue.vm.network "private_network", ip: "192.168.56.10"
+    blue.vm.network "forwarded_port", guest: 22, host: 2223, id: "ssh_host1"
+    blue.vm.network "forwarded_port", guest: 8080, host: 8081
+    
+    blue.vm.provision "file", source: "~/.ssh/id_ed25519", destination: "/home/vagrant/.ssh/id_ed25519"
+
+    blue.vm.provision "ansible" do |ansible|
+        ansible.compatibility_mode = "2.0"
+        ansible.playbook = "./ansible/playbooks/provision_blue.yml"
+        ansible.inventory_path = "./ansible/inventory/inventory.ini"
+    end
+   
+  end
+
+  config.vm.define "green" do |green|
+    green.vm.network "private_network", ip: "192.168.56.11"
+    green.vm.network "forwarded_port", guest: 22, host: 2224, id: "ssh_host2"
+    green.vm.network "forwarded_port", guest: 8080, host: 8082
+    
+    green.vm.provision "file", source: "~/.ssh/id_ed25519", destination: "/home/vagrant/.ssh/id_ed25519"
+    
+    green.vm.provision "ansible" do |ansible|
+      ansible.compatibility_mode = "2.0"
+      ansible.playbook = "./ansible/playbooks/provision_green.yml"
+      ansible.inventory_path = "./ansible/inventory/inventory.ini"
+    end
+
+  end
+
+end

@@ -1,0 +1,5 @@
+---
+- hosts: "green"
+  become: yes
+  tasks:
+    - import_tasks: install_and_configure_machine.yml

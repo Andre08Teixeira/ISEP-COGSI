@@ -1,0 +1,41 @@
+---
+- name: Deploy NonRest App
+  hosts: "{{ target }}"
+  become: yes
+  vars:
+    jenkins_url: "http://localhost:8080"
+
+  tasks:
+    - name: Check if service file exists
+      stat:
+        path: /etc/systemd/system/nonrest.service
+      register: service_file
+
+    - name: Stop existing application
+      systemd:
+        name: nonrest
+        state: stopped
+      ignore_errors: yes
+
+    - name: Copy application jar
+      copy:
+        src: "{{ workspace }}/CA2/tutRestGradle/nonrest/build/libs/nonrest.jar"
+        dest: "nonrest.jar"
+        mode: '0755'
+
+    - name: Create systemd service
+      template:
+        src: "{{ workspace }}/CA6/Part1/ansible/services/nonrestjar.j2"
+        dest: /etc/systemd/system/nonrest.service
+        mode: '0644'
+      when: not service_file.stat.exists
+
+    - name: Reload systemd daemon
+      command: systemctl daemon-reload
+      when: not service_file.stat.exists
+
+    - name: Start application
+      systemd:
+        name: nonrest
+        state: started
+        daemon_reload: yes

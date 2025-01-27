@@ -1,0 +1,26 @@
+---
+- name: Atualiza a cache de pacotes
+  apt:
+    update_cache: yes
+
+- name: Atualiza os pacotes
+  apt:
+    upgrade: dist
+    force_apt_get: yes
+
+- name: Instalar o JDK
+  apt:
+    name: openjdk-17-jdk
+    state: present
+
+- name: Instalar o GIT
+  apt:
+    name: git
+    state: present
+
+- name: Garantir que o diretório .ssh exista
+  file:
+    path: /home/vagrant/.ssh
+    state: directory
+    mode: '0700'
+  become_user: vagrant
