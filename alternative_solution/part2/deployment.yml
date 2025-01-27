@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: db
+  template:
+    metadata:
+      labels:
+        app: db
+    spec:
+      containers:
+      - name: db
+        image: docker.io/david691691/db:1.0
+        ports:
+        - containerPort: 9092
+        volumeMounts:
+        - name: host-shared-volume
+          mountPath: /shared
+        env:
+        - name: H2_BASE_DIR
+          value: /shared
+        - name: H2_TCP_PORT
+          value: "9092"
+        - name: H2_TCP_ALLOW_OTHERS
+          value: "true"
+        livenessProbe:
+          tcpSocket:
+            port: 9092
+          initialDelaySeconds: 180 
+          periodSeconds: 20
+          timeoutSeconds: 10
+          failureThreshold: 5
+        readinessProbe:
+          tcpSocket:
+            port: 9092
+          initialDelaySeconds: 150  
+          periodSeconds: 20
+          timeoutSeconds: 10
+          failureThreshold: 5
+      volumes:
+      - name: host-shared-volume
+        hostPath:
+          path: /home/david/shared
+          type: DirectoryOrCreate  # Cria o diretório caso ele não exista
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+      - name: web
+        image: docker.io/david691691/web:1.0
+        ports:
+        - containerPort: 8080
+        env:
+        - name: SPRING_DATASOURCE_URL
+          value: "jdbc:h2:tcp://db:9092/shared"
+        - name: SPRING_DATASOURCE_USERNAME
+          value: "admin"
+        - name: SPRING_DATASOURCE_PASSWORD
+          value: "adminpassword"
+        - name: SPRING_JPA_HIBERNATE_DDL_AUTO
+          value: "update"
+        readinessProbe:
+          httpGet:
+            path: /employees
+            port: 8080
+          initialDelaySeconds: 120 
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
+        livenessProbe:
+          httpGet:
+            path: /employees
+            port: 8080
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
