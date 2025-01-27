@@ -1,0 +1,96 @@
+---
+- name: Atualiza a cache de pacotes
+  apt:
+    update_cache: yes
+
+- name: Atualiza os pacotes
+  apt:
+    upgrade: dist
+    force_apt_get: yes
+
+- name: Instalar o JDK
+  apt:
+    name: openjdk-17-jdk
+    state: present
+
+- name: Instalar o GIT
+  apt:
+    name: git
+    state: present
+
+- name: Garantir que o diretório .ssh exista
+  file:
+    path: /home/vagrant/.ssh
+    state: directory
+    mode: '0700'
+  become_user: vagrant
+
+- name: Adicionar GitHub aos hosts conhecidos
+  known_hosts:
+    path: /home/vagrant/.ssh/known_hosts
+    name: github.com
+    key: "{{ lookup('pipe', 'ssh-keyscan github.com') }}"
+  become_user: vagrant
+
+- name: Instalar o libpam-pwquality
+  package:
+    name: "libpam-pwquality"
+    state: present
+
+- name: Configurar o pam_pwquality
+  lineinfile:
+    path: "/etc/pam.d/common-password"
+    regexp: "pam_pwquality.so"
+    line: "password required pam_pwquality.so minlen=12 lcredit=-1ucredit=-1 dcredit=-1 ocredit=-1 retry=3 enforce_for_root"
+    state: present
+
+- name: Criar o utilizador 'devuser'
+  user:
+    name: devuser
+    shell: /bin/bash
+    password: $6$OStSJfA6FA$ffSDaJBWfSpmnwlC6QWJwLG3PgZWQhPYUSezmRvSiUFpwSWy/57KuUuLg/4yGBpKx2TWYsPDz9Yq7nL2I2XT3/
+
+- name: Garantir que o grupo 'developers' existe
+  group:
+    name: developers
+    state: present
+
+- name: Atribuir o utilizador 'devuser' ao grupo 'developers'
+  user:
+    name: devuser
+    groups: developers
+    append: yes
+
+- name: Criar o diretório de destino (se necessário)
+  file:
+    path: /cogsi_project
+    state: directory
+    owner: vagrant  
+    group: vagrant  
+    mode: '0770'
+    recurse: true   
+
+- name: Garantir que a verificação de permissões de arquivos está desativada no Git
+  git_config:
+    name: core.fileMode
+    value: false
+    scope: global 
+  become_user: vagrant
+
+- name: Clonar o repositório do serviço REST
+  git:
+    repo: "git@github.com:1181210/cogsi2425-1181210-1190384-1181242.git"
+    dest: /cogsi_project
+    version: main
+    accept_hostkey: yes
+    update: yes 
+  become_user: vagrant
+
+- name: Ajustar permissões para o diretório cogsi_project
+  file:
+    path: /cogsi_project
+    state: directory
+    mode: '0770'
+    group: developers  
+    owner: root
+    recurse: true 

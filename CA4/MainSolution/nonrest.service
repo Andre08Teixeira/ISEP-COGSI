@@ -1,0 +1,13 @@
+[Unit]
+Description=Aplicação nonREST - Serviço
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/cogsi_project/CA2/tutRestGradle/nonrest
+ExecStart=/cogsi_project/CA2/tutRestGradle/gradlew bootRun
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

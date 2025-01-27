@@ -1,0 +1,83 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+# All Vagrant configuration is done below. The "2" in Vagrant.configure
+# configures the configuration version (we support older styles for
+# backwards compatibility). Please don't change it unless you know what
+# you're doing.
+Vagrant.configure("2") do |config|
+  
+  config.vm.provider :virtualbox do |vb|
+   vb.memory = "4096" # Aloca 4 GB de memória para a VM 
+   vb.cpus = 2     # Aloca 2 CPUs para a VM
+  end
+
+  config.vbguest.auto_update = false
+  config.vm.boot_timeout = 600  # Set to 10 minutes or adjust as needed
+  
+  config.vm.box = "bento/ubuntu-22.04"
+
+  # Copy public SSH key to VM
+  config.vm.provision "file", source: "~/.ssh/vagrantCA3Key.pub", destination: "~/.ssh/authorized_keys"
+
+  config.ssh.forward_agent = true
+  config.ssh.insert_key = false
+
+  # Paths to the private key
+  config.ssh.private_key_path = [
+    "~/.vagrant.d/insecure_private_key",
+    "~/.ssh/vagrantCA3Key"
+  ]
+  
+  #Copy all the available SSH keys locally into the Virtual Machine
+  config.vm.provision "file", source: "~/.ssh/id_ed25519", destination: "/home/vagrant/.ssh/id_ed25519"
+  config.vm.synced_folder "./shared/", "/shared"
+
+  # Copy SSH private key to the vagrant user's .ssh directory
+  config.vm.provision "file", source: "~/.ssh/vagrantCA3Key", destination: "/home/vagrant/.ssh/vagrantCA3Key"
+  config.vm.hostname = "cogsiVagrant"
+ 
+  config.vm.provision "init", type: "shell" do |s|
+    s.inline = <<-SHELL
+  
+    # Certifica a existência dos packages puppet
+    if ! command -v puppet >/dev/null 2>&1; then
+      sudo apt-get update
+      sudo apt-get install -y puppet
+      sudo puppet module install puppetlabs-vcsrepo
+    fi
+        
+    #Realizar o clone do repositório
+    #Oferecer permissões à VM na chave ssh
+    chmod 600 /home/vagrant/.ssh/id_ed25519
+    chown vagrant:vagrant /home/vagrant/.ssh/id_ed25519
+
+    # Additional commands can be added here
+    echo "Provisioning complete!"
+  SHELL
+  end
+
+  config.vm.provision "puppet" do |puppet|
+    puppet.manifest_file = "install_and_configure_machine.pp"
+  end
+
+  config.vm.define "host2" do |tutRestDB|
+    tutRestDB.vm.network "forwarded_port", guest: 22, host: 2222, id: "ssh_host2"
+    tutRestDB.vm.network "private_network", ip: "192.168.33.11"
+    tutRestDB.vm.network "forwarded_port", guest: 9092, host: 9092
+
+    tutRestDB.vm.provision "puppet" do |puppet|
+      puppet.manifest_file = "provision_h2database.pp"
+    end
+  end
+
+  config.vm.define "host1" do |tutRest|
+    tutRest.vm.network "forwarded_port", guest: 22, host: 2225, id: "ssh_host1"
+    tutRest.vm.network "private_network", ip: "192.168.33.10"
+    tutRest.vm.network "forwarded_port", guest: 8080, host: 8080
+    
+    tutRest.vm.provision "puppet" do |puppet|
+      puppet.manifest_file = "provision_restservice.pp"
+    end
+  end
+end

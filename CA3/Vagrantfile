@@ -1,0 +1,132 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+# All Vagrant configuration is done below. The "2" in Vagrant.configure
+# configures the configuration version (we support older styles for
+# backwards compatibility). Please don't change it unless you know what
+# you're doing.
+Vagrant.configure("2") do |config|
+  # The most common configuration options are documented and commented below.
+  # For a complete reference, please see the online documentation at
+  # https://docs.vagrantup.com.
+
+  # Every Vagrant development environment requires a box. You can search for
+  # boxes at https://vagrantcloud.com/search.
+  
+  config.vm.provider :virtualbox do |vb|
+   vb.memory = "4096" # Aloca 4 GB de memória para a VM 
+   vb.cpus = 2     # Aloca 2 CPUs para a VM
+  end
+  config.vbguest.auto_update = false
+
+  # Create a forwarded port mapping which allows access to a specific port
+  # within the machine from a port on the host machine. In the example below,
+  # accessing "localhost:8080" will access port 80 on the guest machine.
+  # NOTE: This will enable public access to the opened port
+  # config.vm.network "forwarded_port", guest: 8080, host: 8080
+  # config.vm.network "forwarded_port", guest: 59001, host: 59001
+  
+  config.vm.box = "bento/ubuntu-22.04"
+
+  # Copy public SSH key to VM
+  config.vm.provision "file", source: "~/.ssh/vagrantCA3Key.pub", destination: "~/.ssh/authorized_keys"
+
+  # Paths to the private key
+  config.ssh.private_key_path = [
+  "~/.vagrant.d/insecure_private_key",
+  "~/.ssh/vagrantCA3Key"
+  ]
+
+  # Disable Vagrant's default insecure key insertion
+  config.ssh.insert_key = false
+  
+  # Copy all the available SSH keys locally into the Virtual Machine
+  config.vm.provision "file", source: "~/.ssh/id_ed25519", destination: "/home/vagrant/.ssh/id_ed25519"
+  config.vm.synced_folder "./shared/", "/shared"
+  #config.ssh.forward_agent = true
+
+  config.vm.hostname = "cogsiVagrant"
+ 
+  # Provisioning with a shell script
+  config.vm.provision "init", type: "shell" do |s|
+    s.inline = <<-SHELL
+  
+    # Update package list
+    sudo apt-get update
+
+    # Install some packages
+    sudo apt-get install -y git curl vim openjdk-17-jdk
+
+    #Criar diretório home
+    mkdir home
+    
+    #Mover para o novo diretório criado
+    cd home
+    
+    #Realizar o clone do repositório
+    #Oferecer permissões à VM na chave ssh
+    chmod 600 /home/vagrant/.ssh/id_ed25519
+    chown vagrant:vagrant /home/vagrant/.ssh/id_ed25519
+
+    #Adicionar github aos known hosts do SSH, para não ser necessária confirmação manual
+    ssh-keyscan -H github.com >> /home/vagrant/.ssh/known_hosts
+    chmod 644 /home/vagrant/.ssh/known_hosts
+    chown vagrant:vagrant /home/vagrant/.ssh/known_hosts
+    ssh-add /home/vagrant/.ssh/id_ed25519
+    eval "$(ssh-agent -s)"
+
+
+    GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -i /home/vagrant/.ssh/id_ed25519" git clone git@github.com:1181210/cogsi2425-1181210-1190384-1181242.git
+
+
+    # Additional commands can be added here
+    echo "Provisioning complete!"
+  SHELL
+  end
+
+  config.vm.define "tutRest" do |tutRest|
+    tutRest.vm.network "private_network", ip: "192.168.33.10"
+    tutRest.vm.network "forwarded_port", guest: 8080, host: 8080
+    # Provisioning para o projeto tutRest
+    tutRest.vm.provision "runTutRest", type: "shell", run: "always" do |s|
+      s.inline = <<-SHELL
+      while ! nc -z 192.168.33.11 9092; do   
+        sleep 5
+        echo "Database not available, retrying in 10 seconds"
+      done
+      #Mover para o novo diretório criado
+      cd /home/vagrant/home/cogsi2425-1181210-1190384-1181242/CA2/tutRestGradle/nonrest
+      
+      ../gradlew bootRun
+      SHELL
+    end
+  end
+
+  config.vm.define "tutRestDB" do |tutRestDB|
+    tutRestDB.vm.network "private_network", ip: "192.168.33.11"
+    tutRestDB.vm.network "forwarded_port", guest: 9092, host: 9092
+
+    # Provisioning para a base de dados do projeto tutRest
+    tutRestDB.vm.provision "runTutRestDB", type: "shell", run: "always" do |s|
+      s.inline = <<-SHELL
+        #Mover para o novo diretório criado
+        cd /home/vagrant/home/cogsi2425-1181210-1190384-1181242/CA2/tutRestGradle/nonrest
+        
+        ../gradlew startH2Server
+      SHELL
+    end
+  end
+
+  # Provisioning para o projeto de chat room
+  config.vm.provision "runChatProject", type: "shell", run: "never" do |s|
+    s.inline = <<-SHELL
+  
+      #Mover para o novo diretório criado
+      cd /home/vagrant/home/cogsi2425-1181210-1190384-1181242/CA2/gradle_basic_demo-main
+      
+      ./gradlew runServer
+
+    SHELL
+  end
+
+end

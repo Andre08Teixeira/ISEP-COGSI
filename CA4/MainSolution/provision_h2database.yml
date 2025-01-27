@@ -1,0 +1,62 @@
+---
+- name: Deploy e Configuração do serviço H2
+  hosts: host2
+  become: true
+  become_method: sudo
+  gather_facts: no
+
+  tasks:
+    - import_tasks: install_and_configure_machine.yml
+
+    - name: Instalar ufw
+      apt:
+        name: ufw
+        state: present
+
+    - name: Permitir o acesso SSH
+      ufw:
+        rule: allow
+        name: OpenSSH
+        state: enabled
+
+    - name: Permitir a porta 9092 do IP 192.168.33.10
+      ufw:
+        rule: allow
+        from_ip: 192.168.33.10
+        to_port: 9092
+        proto: tcp
+        state: enabled
+
+    - name: Bloquear todas as outras conexões na porta 9092
+      ufw:
+        rule: deny
+        to_port: 9092
+        proto: tcp
+        state: enabled
+
+    - name: Ativar o ufw no boot
+      ufw:
+        state: enabled
+
+    - name: Copiar o serviço para o diretório do system
+      template:
+        src: "h2.service"
+        dest: "/etc/systemd/system/h2.service"
+        mode: 0755
+      tags: install,systemd
+      become: true       
+      become_user: root  
+
+    - name: Recarregar o systemd para reconhecer o serviço
+      ansible.builtin.systemd:
+        daemon_reload: true
+      become: true      
+      become_user: root  
+
+    - name: Garantir que o serviço h2 está ativo
+      ansible.builtin.systemd:
+        name: h2
+        enabled: true
+        state: started
+      become: true      
+      become_user: root  

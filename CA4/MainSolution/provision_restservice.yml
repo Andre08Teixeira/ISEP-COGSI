@@ -1,0 +1,43 @@
+---
+- name: Deploy e Configuração do serviço Tut-Rest
+  hosts: host1
+  become: true
+  become_method: sudo
+  gather_facts: no
+
+  tasks:
+    - import_tasks: install_and_configure_machine.yml
+
+    - name: Verificar se o serviço no host2 está em funcionamento
+      command: systemctl is-active h2
+      delegate_to: host2 
+      register: host2_service_status
+      until: host2_service_status.stdout == 'active'  
+      retries: 15        
+      delay: 10          
+      failed_when: host2_service_status.stdout != 'active' 
+      become: true       
+      become_user: root  
+
+    - name: Copiar o serviço para o diretório do system
+      template:
+        src: "nonrest.service"
+        dest: "/etc/systemd/system/nonrest.service"
+        mode: 0755
+      tags: install,systemd
+      become: true      
+      become_user: root  
+
+    - name: Recarregar o systemd para reconhecer o serviço
+      ansible.builtin.systemd:
+        daemon_reload: true
+      become: true       
+      become_user: root  
+
+    - name: Garantir que o serviço nonREST está ativo
+      ansible.builtin.systemd:
+        name: nonrest
+        enabled: true
+        state: started
+      become: true      
+      become_user: root  
