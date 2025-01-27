@@ -1,0 +1,93 @@
+workspace(name = "tut-restproj")
+
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "google_bazel_common",
+    url = "https://github.com/google/bazel-common/archive/f11fc5a75eef2733518b11b2ca8de7e7a13c8f31.zip",
+    strip_prefix = "bazel-common-f11fc5a75eef2733518b11b2ca8de7e7a13c8f31",
+)
+
+RULES_JVM_EXTERNAL_TAG = "6.4"
+RULES_JVM_EXTERNAL_SHA = "85776be6d8fe64abf26f463a8e12cd4c15be927348397180a01693610da7ec90"
+
+http_archive(
+    name = "rules_jvm_external",
+    strip_prefix = "rules_jvm_external-%s" % RULES_JVM_EXTERNAL_TAG,
+    sha256 = RULES_JVM_EXTERNAL_SHA,
+    url = "https://github.com/bazel-contrib/rules_jvm_external/releases/download/%s/rules_jvm_external-%s.tar.gz" % (RULES_JVM_EXTERNAL_TAG, RULES_JVM_EXTERNAL_TAG)
+)
+
+load("@rules_jvm_external//:repositories.bzl", "rules_jvm_external_deps")
+
+rules_jvm_external_deps()
+
+load("@rules_jvm_external//:setup.bzl", "rules_jvm_external_setup")
+
+rules_jvm_external_setup()
+
+
+#rules_jvm_external depends on this library. 
+http_archive(
+    name = "bazel_skylib",
+    sha256 = "b8a1527901774180afc798aeb28c4634bdccf19c4d98e7bdd1ce79d1fe9aaad7",
+    urls = [
+        "https://mirror.bazel.build/github.com/bazelbuild/bazel-skylib/releases/download/1.4.1/bazel-skylib-1.4.1.tar.gz",
+        "https://github.com/bazelbuild/bazel-skylib/releases/download/1.4.1/bazel-skylib-1.4.1.tar.gz",
+    ],
+)
+
+load("@rules_jvm_external//:defs.bzl", "maven_install")
+
+maven_install(
+    artifacts = [
+        "org.slf4j:slf4j-api:2.0.0",
+        "org.springframework.boot:spring-boot-autoconfigure:3.2.5",
+        "org.springframework.boot:spring-boot-test-autoconfigure:3.2.5",
+        "org.springframework.boot:spring-boot-test:3.2.5",
+        "org.springframework.boot:spring-boot:3.2.5",
+        "org.springframework.boot:spring-boot-starter-web:3.2.5",
+        "org.springframework.boot:spring-boot-loader:3.2.5",
+        "org.springframework.boot:spring-boot-starter-test:3.2.5",
+        "org.ow2.asm:asm:9.2",
+        "org.springframework.boot:spring-boot-starter-data-jpa:3.2.5",
+        "org.springframework.data:spring-data-jpa:3.2.5",
+        "org.springframework:spring-context:5.3.0",
+        "org.springframework:spring-test:5.3.0",
+        "org.springframework:spring-web:5.3.0",
+        "jakarta.persistence:jakarta.persistence-api:3.0.0",
+        "ch.qos.logback:logback-classic:1.2.11",
+        "ch.qos.logback:logback-core:1.2.11",
+        "com.h2database:h2:2.1.214",
+        "junit:junit:4.13.2", 
+        "io.rest-assured:rest-assured:5.2.0",
+
+
+
+    ],
+    fetch_sources = True,
+    maven_install_json = "//:maven_install.json",
+    repositories = [
+        "https://repo1.maven.org/maven2",
+        "https://maven.google.com",
+        "https://jcenter.bintray.com/",
+    ],
+)
+
+
+load("@maven//:defs.bzl", "pinned_maven_install")
+pinned_maven_install()
+
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(
+    name = "rules_pkg",
+    urls = [
+        "https://mirror.bazel.build/github.com/bazelbuild/rules_pkg/releases/download/0.9.1/rules_pkg-0.9.1.tar.gz",
+        "https://github.com/bazelbuild/rules_pkg/releases/download/0.9.1/rules_pkg-0.9.1.tar.gz",
+    ],
+    sha256 = "8f9ee2dc10c1ae514ee599a8b42ed99fa262b757058f65ad3c384289ff70c4b8",
+)
+load("@rules_pkg//:deps.bzl", "rules_pkg_dependencies")
+rules_pkg_dependencies()
+
+
