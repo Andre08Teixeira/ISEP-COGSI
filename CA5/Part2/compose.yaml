@@ -1,0 +1,49 @@
+networks:
+  custom_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.33.0/24 
+
+services:
+  db:
+    image: db
+    volumes:
+      - ./shared:/shared
+    networks:
+      custom_network:
+        ipv4_address: 192.168.33.11
+    ports:
+      - "9092:9092"
+    environment:
+      H2_BASE_DIR: /shared
+      H2_TCP_PORT: 9092
+      H2_TCP_ALLOW_OTHERS: true
+    healthcheck:
+      test: ["CMD", "nc", "-zv", "127.0.0.1", "9092"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+  
+  web:
+    image: web
+    networks:
+      custom_network:
+        ipv4_address: 192.168.33.10
+    ports:
+      - "8000:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:h2:tcp://192.168.33.11:9092/shared
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: adminpassword
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/employees"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 50s
+    depends_on:
+      db:
+        condition: service_healthy
